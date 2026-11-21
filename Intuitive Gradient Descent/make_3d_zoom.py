@@ -16,12 +16,12 @@ os.makedirs(OUT, exist_ok=True)
 
 schedule = []
 for k in range(N_IT):
-    hold = 6 if k < 3 else 4
+    hold = 9 if k < 3 else 6
     schedule += [(k, EVAL, 1.0)] * hold
-    schedule += [(k, SLOPE, 1.0)] * (hold + 2)
-    schedule += [(k, NUDGE, 0.0)] * (hold + 2)
-    schedule += [(k, NUDGE, i / 7) for i in range(8)]       # the point slides
-schedule += [(N_IT, FINAL, 1.0)] * 30
+    schedule += [(k, SLOPE, 1.0)] * (hold + 3)
+    schedule += [(k, NUDGE, 0.0)] * (hold + 3)
+    schedule += [(k, NUDGE, i / 9) for i in range(10)]      # the point slides
+schedule += [(N_IT, FINAL, 1.0)] * 36
 
 fig = plt.figure(figsize=(17.5, 6))
 axm = fig.add_axes([0.0, 0.0, 0.33, 0.93], projection="3d")
@@ -54,8 +54,8 @@ if __name__ == "__main__":
     print(len(schedule), "frames")
     mp4 = os.path.join(tempfile.gettempdir(), "gd_3d_zoom.mp4")
     gif = os.path.join(OUT, "gd_3d_zoom.gif")
-    FuncAnimation(fig, draw, frames=schedule).save(mp4, writer=FFMpegWriter(fps=8, bitrate=2000), dpi=90)
+    FuncAnimation(fig, draw, frames=schedule).save(mp4, writer=FFMpegWriter(fps=6, bitrate=2000), dpi=90)
     subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-i", mp4, "-vf",
-                    "fps=8,scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer:bayer_scale=4",
+                    "fps=6,scale=1200:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=bayer:bayer_scale=4",
                     gif], check=True)
     print("wrote", gif)
