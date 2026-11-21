@@ -262,3 +262,73 @@ for c, deg in enumerate([1, 2]):
     axs[1, c].set_title(["residuals: U-shape → wrong model", "residuals: random noise → good"][c])
 plt.tight_layout(); plt.savefig("assets/nonlinear_residuals.png"); plt.close()
 print("nonlinear_residuals.png done")
+
+# ================================================================
+# 6) STATIC: why it's convex - every point adds a U, U + U = U
+# ================================================================
+fig, axs = plt.subplots(1, 3, figsize=(12, 3.6), dpi=90)
+ws = np.linspace(-0.4, 2.0, 300)
+for xi, yi in zip(x, y):
+    axs[0].plot(ws, (yi - ws * xi - b_ls) ** 2 / N, color=GREY, lw=0.8, alpha=0.7)
+Jw = [cost(w, b_ls) for w in ws]
+axs[0].plot(ws, Jw, color=RED, lw=3, label="total error J")
+axs[0].plot(w_ls, J_ls, "*", color=GREEN, ms=16, mec="k")
+axs[0].set_ylim(0, 6); axs[0].set_xlabel("slope w  (b kept fixed)"); axs[0].set_ylabel("error")
+axs[0].set_title("grey: error of each single point\nred: their sum, still one U", fontsize=10.5)
+axs[0].legend(fontsize=9)
+
+bs = np.linspace(-4, 8, 300)
+for xi, yi in zip(x, y):
+    axs[1].plot(bs, (yi - w_ls * xi - bs) ** 2 / N, color=GREY, lw=0.8, alpha=0.7)
+axs[1].plot(bs, [cost(w_ls, b) for b in bs], color=RED, lw=3)
+axs[1].plot(b_ls, J_ls, "*", color=GREEN, ms=16, mec="k")
+axs[1].set_ylim(0, 6); axs[1].set_xlabel("intercept b  (w kept fixed)")
+axs[1].set_title("same story for b:\nsum of U's = one U", fontsize=10.5)
+
+t = np.linspace(-3, 3, 400)
+bad = 0.3 * t ** 4 - 1.6 * t ** 2 + 0.5 * t + 2.5
+axs[2].plot(t, bad, color="#a21caf", lw=3)
+i1 = np.argmin(np.where(t < 0, bad, np.inf)); i2 = np.argmin(np.where(t > 0, bad, np.inf))
+axs[2].plot(t[i1], bad[i1], "*", color=GREEN, ms=16, mec="k")
+axs[2].plot(t[i2], bad[i2], "o", color=RED, ms=9)
+axs[2].annotate("trap: looks like a bottom,\nbut is not the best", (t[i2], bad[i2]), xytext=(0.3, 4.2),
+                fontsize=9, arrowprops=dict(arrowstyle="->"))
+axs[2].set_title("what least squares does NOT have:\na wavy curve with several dips", fontsize=10.5)
+axs[2].set_xlabel("some parameter"); axs[2].set_ylim(0, 6)
+plt.tight_layout(); plt.savefig("assets/convexity.png"); plt.close()
+print("convexity.png done")
+
+# ================================================================
+# 7) STATIC: LMS identifying an unknown FIR system
+# ================================================================
+h = np.array([0.8, -0.4, 0.2, 0.1])                       # unknown system
+M, Nn, runs = len(h), 2000, 100
+
+def lms_run(mu, seed):
+    r = np.random.default_rng(seed)
+    xs = r.normal(0, 1, Nn)
+    d = np.convolve(xs, h)[:Nn] + r.normal(0, 0.05, Nn)    # desired = system output + noise
+    wv = np.zeros(M); W_h = np.zeros((Nn, M)); E = np.zeros(Nn)
+    for n in range(Nn):
+        xv = xs[max(0, n - M + 1):n + 1][::-1]
+        xv = np.pad(xv, (0, M - len(xv)))                  # [x[n], x[n-1], ..., x[n-M+1]]
+        e = d[n] - wv @ xv                                 # 1) output and error
+        wv = wv + mu * e * xv                              # 2) LMS update
+        W_h[n] = wv; E[n] = e ** 2
+    return W_h, E
+
+fig, axs = plt.subplots(1, 2, figsize=(11, 3.8), dpi=90)
+W_h, _ = lms_run(0.01, 0)
+for k in range(M):
+    axs[0].plot(W_h[:, k], lw=1.6, label=f"w{k} → {h[k]}")
+    axs[0].axhline(h[k], color="k", ls=":", lw=0.8)
+axs[0].set_title("LMS taps learning the unknown system (μ = 0.01)", fontsize=10.5)
+axs[0].set_xlabel("sample n"); axs[0].legend(fontsize=8.5, ncol=2)
+for mu, c in [(0.002, BLUE), (0.01, GREEN), (0.08, RED)]:
+    E = np.mean([lms_run(mu, s)[1] for s in range(runs)], axis=0)
+    axs[1].plot(10 * np.log10(E), color=c, lw=1.4, label=f"μ = {mu}")
+axs[1].axhline(10 * np.log10(0.05 ** 2), color="k", ls="--", lw=1, label="noise floor")
+axs[1].set_title("learning curve (mean of e², 100 runs)", fontsize=10.5)
+axs[1].set_xlabel("sample n"); axs[1].set_ylabel("dB"); axs[1].legend(fontsize=9)
+plt.tight_layout(); plt.savefig("assets/lms_system_id.png"); plt.close()
+print("lms_system_id.png done")

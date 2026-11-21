@@ -96,53 +96,133 @@ The map shows something useful: the error surface is **one smooth valley**. We c
 
 ---
 
-## 5. Why it is a convex bowl (the second derivative)
+## 5. Why there is only **one** best line (convexity)
+
+Keep `b` fixed and look at how the error changes with `w`.
+A single data point contributes $(y_i - w x_i - b)^2$. The part inside the brackets is a straight line in `w`, and squaring a straight line gives a **U-shaped parabola**.
+The total error $J$ is just the sum of these U-shapes, and **adding U-shapes always gives another U-shape**. Exactly the same happens for `b`.
+
+<div align="center">
+<img src="assets/convexity.png" width="820" alt="Sum of parabolas is a parabola">
+</div>
+
+So in every direction, $J$ is a U. Together they form a bowl with **one bottom and no traps** (right panel: the kind of curve we *don't* get). This property is called **convex**.
+
+**The second-derivative check.** A curve bends upward (a U) when its second derivative is positive:
 
 $$
-\frac{\partial J}{\partial w} = -\frac{2}{N}\sum e_i x_i,\qquad
-\frac{\partial J}{\partial b} = -\frac{2}{N}\sum e_i,\qquad
-H = 2\begin{bmatrix}\overline{x^2} & \bar x\\ \bar x & 1\end{bmatrix}
+\frac{d^2 J}{d w^2} = 2 \cdot \text{average}(x_i^2), \qquad \frac{d^2 J}{d b^2} = 2
 $$
 
-* The Hessian $H$ is **constant**, so the curvature is the same everywhere and $J$ is an exact quadratic bowl.
-* $\det H = 4\,\mathrm{Var}(x) > 0$ and $\partial^2 J/\partial w^2 > 0$, so $H$ is **positive definite**. That means **strictly convex**: one minimum and no traps.
+Both are positive **for every** `w` and `b`. The bowl curves upward everywhere, so it can't have a hump or a second dip.
 
-### Closed form (set the gradient to zero)
+### Finding the bottom directly
 
-$$
-w^* = \frac{\mathrm{Cov}(x,y)}{\mathrm{Var}(x)}, \qquad b^* = \bar y - w^*\bar x
-\qquad\Longleftrightarrow\qquad
-X^TX\,\theta = X^Ty \;\Rightarrow\; \theta^* = (X^TX)^{-1}X^Ty
-$$
+At the bottom of the bowl the ground is flat, so the derivative with respect to **both** knobs is zero:
 
-Because $J$ is exactly quadratic, **one Newton step** $\theta - H^{-1}\nabla J$ lands on $\theta^*$ from *any* starting point.
+| Condition | What it says | Result |
+|---|---|---|
+| $\dfrac{\partial J}{\partial b} = 0$ | the misses above and below the line cancel out | $b_{\text{best}} = \bar y - w_{\text{best}}\ \bar x$ |
+| $\dfrac{\partial J}{\partial w} = 0$ | the misses are not tilted against $x$ | $w_{\text{best}} = \dfrac{\mathrm{Cov}(x,y)}{\mathrm{Var}(x)}$ |
+
+In words:
+* the best line always passes through the **average point** $(\bar x, \bar y)$ of the data,
+* its slope is **how much x and y move together, divided by how much x moves on its own**.
+
+No loop and no guessing: one formula gives the exact answer. (With more parameters the same idea becomes one matrix equation, solved in Python by `np.linalg.lstsq(X, y)`.)
 
 ---
 
 ## 6. Iteratively: gradient descent
 
+Instead of jumping straight to the bottom, we can also **walk downhill**. At every step we look at the slope of the ground and take a small step against it:
+
 $$
-\theta \leftarrow \theta - \eta\,\nabla J(\theta), \qquad \text{stable if } \eta < 2/\lambda_{\max}(H)
+w \leftarrow w - \eta \ \frac{\partial J}{\partial w}, \qquad b \leftarrow b - \eta \ \frac{\partial J}{\partial b}
 $$
+
+$\eta$ is the step size. If it is too small, the walk is slow. If it is too big, each step overshoots the valley and the error **explodes**.
 
 <div align="center">
 <img src="assets/gd_bowl.gif" width="680" alt="Gradient descent path on the cost bowl">
 </div>
 
-Same two views as before. Instead of trying everything, we start at one line (□ *start*) and keep stepping **downhill** on the map. Each step makes the line on the left a little better. The dashed green line is the target.
-The path rushes down the steep wall, then **crawls** along the flat valley.
-The bowl is a thin ellipse (condition number ≈ 220), so the intercept $b$ converges slowly.
-Centring the data ($x \to x - \bar x$) makes the ellipse round and convergence much faster.
+These are the same two views as before. We start at one line (□ *start*) and keep stepping **downhill** on the map, so the line on the left gets a little better with every step. The dashed green line is the target.
+
+The path rushes down the steep side, then **crawls** along the long, flat valley floor. The valley is a thin ellipse because changing `w` affects the error much more than changing `b`.
+Centring the data ($x \to x - \bar x$) makes the valley round and the walk much faster.
+
+Why walk at all if a formula exists? Because the formula needs **all the data at once**. In signal processing the data often arrives **one sample at a time**, and that is exactly the next step.
 
 ---
 
-## 7. Bridge to adaptive filtering: LMS
+## 7. From least squares to **LMS** (Least *Mean* Squares) — the adaptive filter
 
-Use the gradient of **one sample at a time** instead of all $N$ (Widrow–Hoff, 1960):
+### 7.1 The setting: an adaptive filter
+
+In DSP we often have a system whose behaviour we don't know (an acoustic echo path, a communication channel, 50 Hz mains hum leaking into an ECG). We want a filter that **learns it by itself, while the signal is running**.
+
+```mermaid
+flowchart LR
+    X["input x[n]"] --> S["unknown system"]
+    S --> D["desired d[n]"]
+    X --> F["adaptive FIR filter<br/>weights w"]
+    F --> Y["output y[n]"]
+    D --> E(("d[n] − y[n]"))
+    Y --> E
+    E -- "error e[n] adjusts the weights" --> F
+```
+
+The filter is an FIR filter with $M$ taps. At time $n$ it looks at the last $M$ input samples:
 
 $$
-e[n] = y[n] - (w\,x[n] + b), \qquad w \leftarrow w + \mu\,e[n]\,x[n], \qquad b \leftarrow b + \mu\,e[n]
+\mathbf{x}[n] = \big[\ x[n],\ x[n-1],\ \dots,\ x[n-M+1]\ \big]^T, \qquad y[n] = \mathbf{w}^T \mathbf{x}[n] = \sum_{k=0}^{M-1} w_k\ x[n-k]
 $$
+
+$$
+e[n] = d[n] - y[n]
+$$
+
+**This is the same problem as fitting our line.** The line $\hat y = w x + b$ is an adaptive filter with 2 weights, $\mathbf{w} = [w,\ b]$, and input $\mathbf{x} = [x,\ 1]$.
+
+### 7.2 Why "Least *Mean* Squares"?
+
+* **Least squares** minimises the **sum** of squared errors over a fixed batch of data we already have.
+* For a signal that keeps running there is no fixed batch. Instead we minimise the **expected (mean)** squared error:
+
+$$
+J(\mathbf{w}) = \mathbb{E}\big[e^2[n]\big]
+$$
+
+This is still the same convex bowl, now over $M$ weights. Its exact bottom is the **Wiener solution** $\mathbf{w}_{\text{opt}} = \mathbf{R}^{-1}\mathbf{p}$, where $\mathbf{R}$ is the autocorrelation matrix of the input and $\mathbf{p}$ is the cross-correlation between the input and $d[n]$.
+It is the statistical twin of our closed-form formula: Var(x) becomes $\mathbf{R}$ and Cov(x,y) becomes $\mathbf{p}$.
+
+The problem is that in real time we **don't know** $\mathbf{R}$ and $\mathbf{p}$, and inverting $\mathbf{R}$ every sample would be far too expensive.
+
+### 7.3 The LMS trick (Widrow & Hoff, 1960)
+
+1. Use gradient descent on the bowl: $\ \mathbf{w} \leftarrow \mathbf{w} - \eta\ \nabla J$.
+2. The true gradient is $\nabla J = -2\ \mathbb{E}\big[e[n]\ \mathbf{x}[n]\big]$, which needs that unknown expectation.
+3. **The trick:** drop the expectation and use the current sample only, $\ \nabla J \approx -2\ e[n]\ \mathbf{x}[n]$. It is a noisy guess, but correct on average.
+4. Put it into step 1 and absorb the 2 into the step size $\mu$:
+
+$$
+\boxed{\ \mathbf{w}[n+1] = \mathbf{w}[n] + \mu\ e[n]\ \mathbf{x}[n]\ }
+$$
+
+**The whole algorithm, run once per new sample:**
+
+```python
+y = w @ x_vec            # 1. filter output         (M multiplications)
+e = d - y                # 2. error
+w = w + mu * e * x_vec   # 3. nudge every weight    (M multiplications)
+```
+
+How to read the update: **error × input**. If the error is large and a tap's input was large, that tap was probably responsible, so it gets corrected most. When the error is zero, nothing changes.
+
+### 7.4 Watching it learn
+
+Back to our line, updated one data point at a time:
 
 <div align="center">
 <img src="assets/lms_sample_by_sample.gif" width="460" alt="LMS updating sample by sample">
@@ -150,13 +230,29 @@ $$
 *Red circle = the single sample used for this update · dashed green = the exact least-squares line*
 </div>
 
-It uses the same cost and the same bowl, but takes cheap, noisy steps. LMS never settles exactly and keeps jittering around the LS solution. A smaller $\mu$ gives less jitter but slower convergence.
+A real DSP case, **system identification**. The unknown system is an FIR filter $h = [0.8,\ -0.4,\ 0.2,\ 0.1]$, driven by white noise, with a little measurement noise added:
 
-| | Least Squares | LMS |
-|---|---|---|
-| Data per update | all $N$ points | 1 sample |
-| Result | exact, one shot | keeps jittering around the exact answer |
-| Tracks a changing system | ❌ | ✅ |
+<div align="center">
+<img src="assets/lms_system_id.png" width="820" alt="LMS system identification and learning curves">
+</div>
+
+* **Left:** the 4 LMS weights find the unknown system on their own, with no matrix inversion.
+* **Right:** the **learning curve**, the squared error averaged over 100 runs. This shows the key trade-off of the step size $\mu$:
+  * 🔵 small $\mu$ is **slow**, but ends very close to the noise floor,
+  * 🔴 large $\mu$ is **fast**, but ends slightly *above* the floor because the weights keep jittering (this extra error is called **misadjustment**),
+  * if $\mu$ is too large it **diverges**. Rule of thumb: keep $\mu$ below $\dfrac{2}{M \cdot P_x}$, where $P_x$ is the input power.
+
+### 7.5 The family at a glance
+
+| | Least Squares | Wiener filter | **LMS** | RLS |
+|---|---|---|---|---|
+| Minimises | sum of e² over a batch | mean of e² | mean of e² (noisy estimate) | weighted sum of e² |
+| Needs | all data at once | true statistics R, p | nothing, just the current sample | the past data, summarised recursively |
+| Cost per sample | — (one big solve) | — (one big solve) | about 2M multiplications | about M² multiplications |
+| Converges | exact, one shot | exact | slowly, keeps jittering | fast |
+| Tracks a changing system | ❌ | ❌ | ✅ | ✅ |
+
+**Where LMS is used:** echo cancellation in phones and video calls, channel equalisation in modems, active noise cancelling headphones, and removing 50 Hz hum from biomedical signals (an adaptive notch filter).
 
 ---
 
