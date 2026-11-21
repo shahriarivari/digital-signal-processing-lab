@@ -139,7 +139,7 @@ def anim_learning_rate():
 
     frames = list(range(n_iter + 1)) + [n_iter] * 5
     a = FuncAnimation(fig, draw, frames=frames, interval=500)
-    a.save(os.path.join(OUT, "gd_learning_rate.gif"), writer=PillowWriter(fps=1.5), dpi=80)
+    a.save(os.path.join(OUT, "gd_learning_rate.gif"), writer=PillowWriter(fps=1.5), dpi=105)
     plt.close(fig)
 
 
@@ -179,7 +179,7 @@ def anim_nonconvex():
 
     frames = list(range(n_iter + 1)) + [n_iter] * 6
     a = FuncAnimation(fig, draw, frames=frames, interval=250)
-    a.save(os.path.join(OUT, "gd_nonconvex.gif"), writer=PillowWriter(fps=3), dpi=85)
+    a.save(os.path.join(OUT, "gd_nonconvex.gif"), writer=PillowWriter(fps=3), dpi=105)
     plt.close(fig)
 
 
@@ -232,7 +232,7 @@ def anim_2d():
 
     frames = list(range(n_iter + 1)) + [n_iter] * 6
     a = FuncAnimation(fig, draw, frames=frames, interval=350)
-    a.save(os.path.join(OUT, "gd_2d_wiener.gif"), writer=PillowWriter(fps=2), dpi=85)
+    a.save(os.path.join(OUT, "gd_2d_wiener.gif"), writer=PillowWriter(fps=2), dpi=105)
     plt.close(fig)
     return path
 

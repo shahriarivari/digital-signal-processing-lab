@@ -44,6 +44,53 @@ def zoom_title(k):
     c, h = zoom_window(k)
     return f"ZOOMED VIEW  (×{FULL / h:.1f}, the orange box)"
 
+H = 0.001   # small distance used for the numerical derivative
+
+
+def text_columns(k, phase):
+    """three columns of (text, colour, bold) lines for the number panel"""
+    if phase == FINAL:
+        x, y = pts[-1]; gxm, gym = GLOBAL_MIN
+        c1 = [(f"STOPPED after {N_IT} iterations", GREEN, True),
+              (f"(x, y) = ({x:.3f}, {y:.3f})", GREEN, False),
+              (f"F = {F(x, y):.4f}", GREEN, False)]
+        c2 = [(f"∂F/∂x = {Fx(x, y):+.4f}   ∂F/∂y = {Fy(x, y):+.4f}", GREEN, False),
+              ("slopes ≈ 0  →  steps ≈ 0", GREEN, False),
+              ("→ bottom of a valley", GREEN, True)]
+        c3 = [("This is a LOCAL minimum.", DARK, True),
+              (f"Deepest valley (green star):", DARK, False),
+              (f"({gxm}, {gym}),  F = {F(gxm, gym):.3f}", DARK, False),
+              ("The start point decides the valley.", DARK, False)]
+        return [c1, c2, c3]
+    x, y = pts[k]; f0, gx, gy = F(x, y), Fx(x, y), Fy(x, y)
+    c1 = [(f"ITERATION {k}", BLUE, True),
+          (f"point (x, y) = ({x:.3f}, {y:.3f})", BLUE, False), ("", None, False),
+          ("1) evaluate F at the point", DARK, True),
+          (f"F = 0.25{f2(x)}⁴ − {f2(x)}²", DARK, False),
+          (f"  + 0.3{f2(x)} + 0.25{f2(y)}⁴", DARK, False),
+          (f"  − 0.8{f2(y)}² + 0.15{f2(y)}", DARK, False),
+          (f"  = {f0:.4f}", DARK, True)]
+    c2, c3 = [], []
+    if phase >= SLOPE:
+        fxh, fyh = F(x + H, y), F(x, y + H)
+        c2 = [("2) slope = change in F / distance h", ORANGE, True),
+              ("∂F/∂x ≈ [F(x+h, y) − F(x, y)] / h", ORANGE, False),
+              (f"   = ({fxh:.5f} − {f0:.5f})/{H} = {(fxh - f0) / H:+.3f}", ORANGE, False),
+              (f"   exact: x³ − 2x + 0.3 = {gx:+.4f}", ORANGE, True),
+              ("∂F/∂y ≈ [F(x, y+h) − F(x, y)] / h", ORANGE, False),
+              (f"   = ({fyh:.5f} − {f0:.5f})/{H} = {(fyh - f0) / H:+.3f}", ORANGE, False),
+              (f"   exact: y³ − 1.6y + 0.15 = {gy:+.4f}", ORANGE, True)]
+    if phase >= NUDGE:
+        nx, ny = pts[k + 1]
+        c3 = [("3) nudge AGAINST the slope", RED, True),
+              ("x ← x − μ·∂F/∂x", RED, False),
+              (f"  = {x:.3f} − {MU}{f2(gx)} = {nx:.3f}", RED, False),
+              ("y ← y − μ·∂F/∂y", RED, False),
+              (f"  = {y:.3f} − {MU}{f2(gy)} = {ny:.3f}", RED, False), ("", None, False),
+              (f"F: {f0:.4f} → {F(nx, ny):.4f}", RED, True),
+              ("(went down)", RED, False)]
+    return [c1, c2, c3]
+
 
 def zoom_window(k):
     """centre and half-width of the zoomed view for iteration k"""
@@ -128,7 +175,7 @@ def draw_zoom(ax, k, phase, t=1.0):
     if phase in (SLOPE, NUDGE):
         gx, gy = Fx(*p0), Fy(*p0); f0 = F(*p0); r = 0.45 * h
         tX, tY = np.meshgrid(np.linspace(p0[0] - r, p0[0] + r, 2), np.linspace(p0[1] - r, p0[1] + r, 2))
-        ax.plot_surface(tX, tY, f0 + gx * (tX - p0[0]) + gy * (tY - p0[1]), color=ORANGE, alpha=0.45, linewidth=0)
+        ax.plot_surface(tX, tY, f0 + gx * (tX - p0[0]) + gy * (tY - p0[1]), color=ORANGE, alpha=0.55, linewidth=0)
     cur = p0
     if phase == NUDGE:
         s = np.linspace(0, 1, 30)

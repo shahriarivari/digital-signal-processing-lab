@@ -31,7 +31,36 @@ Start at $(-0.3,\ 1.9)$, step size $\mu = 0.2$.
 
 ![Gradient descent on a 3-D surface](assets/gd_3d_zoom.gif)
 
-Left: the whole surface, with the path drawn on it. Middle: a close-up of the current step (the orange box in the left view). Right: the numbers being computed.
+- **Left:** the whole surface, with the path drawn on it.
+- **Right:** a close-up of the current step (the orange box in the left view). The **orange plane** is the derivative at the point: zoomed in, the surface looks flat, and that tilted plane is the slope in $x$ and $y$.
+- **Bottom:** the numbers for each step.
+
+### How the derivative is evaluated at a point
+
+A derivative is the *change in value over a small distance*. Step a tiny distance `h` from the point and see how much `F` changes:
+
+```
+h = 0.001
+f0 = F(x, y)
+
+dF_dx = (F(x + h, y) - f0) / h      # move a little in x only
+dF_dy = (F(x, y + h) - f0) / h      # move a little in y only
+
+x = x - mu * dF_dx                  # step against the slope
+y = y - mu * dF_dy
+```
+
+At the start point $(-0.3,\ 1.9)$:
+
+| | value |
+|---|---|
+| $F(x, y)$ | 0.47705 |
+| $F(x+h,\ y)$ | 0.47792 |
+| $\partial F/\partial x \approx (0.47792 - 0.47705)/0.001$ | **+0.872** (exact: +0.873) |
+| $F(x,\ y+h)$ | 0.48102 |
+| $\partial F/\partial y \approx (0.48102 - 0.47705)/0.001$ | **+3.974** (exact: +3.969) |
+
+When the formula is known, you can use the exact derivative instead, as the animation does. The numerical version shows what that number *means*.
 
 | k | $(x_k,\ y_k)$ | $F$ | $\partial F/\partial x$ | $\partial F/\partial y$ |
 |---|---|---|---|---|
