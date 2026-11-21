@@ -222,25 +222,100 @@ How to read the update: **error × input**. If the error is large and a tap's in
 
 ### 7.4 Watching it learn
 
-Back to our line, updated one data point at a time:
+#### 7.4.1 One update by hand
+
+Let's do a single LMS step with real numbers from our line-fitting data ($\mu = 0.008$).
+The filter starts with a bad guess, $w = -0.5$ and $b = 7.5$, i.e. the line $y = -0.5x + 7.5$.
+
+| Step | Calculation | Result |
+|---|---|---|
+| a sample arrives | $x = 7.74$, $y = 7.54$ | |
+| 1. predict | $-0.5 \cdot 7.74 + 7.5$ | $3.63$ |
+| 2. error | $7.54 - 3.63$ | $e = +3.91$ (the point is **above** the line) |
+| 3. update slope | $\Delta w = \mu\ e\ x = 0.008 \cdot 3.91 \cdot 7.74$ | $+0.242$ |
+| 3. update intercept | $\Delta b = \mu\ e \cdot 1 = 0.008 \cdot 3.91$ | $+0.031$ |
+| new line | | $y = -0.258x + 7.531$ |
+
+Check: the new line predicts $5.53$ at $x = 7.74$, so the error on this sample dropped from $3.91$ to $2.01$.
+Three things to notice:
+
+1. **The sign of the error decides the direction.** The point was above the line ($e$ positive), so the line moved **up** at that spot.
+2. **The input decides who gets corrected most.** The slope's input was $x = 7.74$ and the intercept's input is always $1$, so the slope got a correction 7.74 times bigger. Weights whose input was large had more influence on the error, so they get more of the correction.
+3. **Where the stability limit comes from.** One update shrinks the error on that sample by the factor $(1 - \mu \cdot \lVert \mathbf{x} \rVert^2) = 1 - 0.008 \cdot (7.74^2 + 1) = 0.51$. If $\mu$ were so big that this factor went below $-1$, every update would **overshoot** and make the error bigger, and the filter would explode.
+
+#### 7.4.2 The animation: many of those updates in a row
 
 <div align="center">
-<img src="assets/lms_sample_by_sample.gif" width="460" alt="LMS updating sample by sample">
-
-*Red circle = the single sample used for this update · dashed green = the exact least-squares line*
+<img src="assets/lms_sample_by_sample.gif" width="480" alt="LMS updating sample by sample">
 </div>
 
-A real DSP case, **system identification**. The unknown system is an FIR filter $h = [0.8,\ -0.4,\ 0.2,\ 0.1]$, driven by white noise, with a little measurement noise added:
+**How to read each frame:**
+
+| On screen | Meaning |
+|---|---|
+| 🔴 circled point | the **one** sample used in this update |
+| thick red vertical segment | its error $e$: the gap between the point and the line *before* the update |
+| red **dotted** line | the line before the update |
+| red **solid** line | the line after the update |
+| dashed green line | the exact least-squares answer (what LMS should approach) |
+| numbers at the top | $e$, and the corrections $\Delta w = \mu e x$ and $\Delta b = \mu e$ |
+
+**What to look for:**
+* **Early on:** the errors are big, so the line swings a lot. Mostly the **slope** changes, as explained in point 2 above.
+* **Middle:** the slope is roughly right, but the line is still too high. The intercept creeps down slowly because its corrections are tiny ($\Delta b$ is several times smaller than $\Delta w$, because $x$ is usually much bigger than 1). This is the same slow, flat valley we saw in gradient descent.
+* **End:** the line sits on top of the green line, but it **never fully stops**. Every new sample tugs it a little toward that point. This permanent wiggle is the price of using one sample instead of all of them.
+
+#### 7.4.3 A real DSP case: identifying an unknown system
+
+Now a proper adaptive-filter experiment:
+* the "unknown system" is an FIR filter $h = [0.8,\ -0.4,\ 0.2,\ 0.1]$ (4 taps),
+* the input $x[n]$ is white noise with power $P_x = 1$,
+* the desired signal is the system's output plus a little measurement noise, $d[n] = (h \ast x)[n] + v[n]$, with noise power $\sigma_v^2 = 0.0025$,
+* an LMS filter with $M = 4$ taps, all starting at **0**, must discover $h$ from $x[n]$ and $d[n]$ alone.
+
+**Graph 1: the weights over time**
 
 <div align="center">
-<img src="assets/lms_system_id.png" width="820" alt="LMS system identification and learning curves">
+<img src="assets/lms_weights.png" width="780" alt="LMS weights converging to the true system">
 </div>
 
-* **Left:** the 4 LMS weights find the unknown system on their own, with no matrix inversion.
-* **Right:** the **learning curve**, the squared error averaged over 100 runs. This shows the key trade-off of the step size $\mu$:
-  * 🔵 small $\mu$ is **slow**, but ends very close to the noise floor,
-  * 🔴 large $\mu$ is **fast**, but ends slightly *above* the floor because the weights keep jittering (this extra error is called **misadjustment**),
-  * if $\mu$ is too large it **diverges**. Rule of thumb: keep $\mu$ below $\dfrac{2}{M \cdot P_x}$, where $P_x$ is the input power.
+* **x-axis:** time, i.e. how many samples the filter has seen. **y-axis:** the value of each weight.
+* **Each coloured line is one tap** of the adaptive filter. The **dotted line of the same colour** is the true value it should find, which the filter itself never sees.
+* **Yellow region (≈ first 300 samples), learning:** all weights start at 0 and move towards their targets. They are pulled by the error. As long as the filter is wrong, the error is big and the weights keep moving.
+* **White region, steady state:** the weights have arrived (the final values on the right match $h$ to within 0.002). The error is now mostly the measurement noise, which can't be predicted, so the updates become tiny random nudges, which is the small wiggle you see.
+* With $\mu = 0.01$ this took about 300 samples. A larger $\mu$ would arrive sooner but wiggle more.
+
+**Graph 2: the learning curve, the most important graph in adaptive filtering**
+
+<div align="center">
+<img src="assets/lms_learning_curve.png" width="800" alt="LMS learning curves for three step sizes">
+</div>
+
+**The axes:**
+* **x-axis:** time (samples).
+* **y-axis:** the squared error $e^2[n]$ **in decibels**, $10 \log_{10}(e^2)$. We use dB because the error drops by a factor of hundreds: 0 dB means "as big as the signal" and −20 dB means "100× smaller".
+
+**Why the grey mess, and why average 100 runs?**
+The faint grey curve is **one single run**. $e^2[n]$ jumps up and down by ±20 dB from sample to sample, because the input is random, so you can't see the trend.
+The learning curve is defined as the **mean** squared error $\mathbb{E}[e^2[n]]$. We estimate it by repeating the whole experiment 100 times (new random input each time) and averaging the 100 values at each $n$. That gives the smooth coloured curves. (This is also the "mean" in Least *Mean* Squares.)
+
+**Reading the curves from left to right:**
+
+1. **Start, at about −0.7 dB.** All weights are 0, so the filter outputs nothing and the error is the whole desired signal: $\mathbb{E}[d^2] = 0.8^2 + 0.4^2 + 0.2^2 + 0.1^2 + 0.0025 = 0.85$, which is −0.7 dB.
+2. **Descent, a straight line in dB.** For white input the remaining "excess" error shrinks by a fixed factor $(1-\mu)^2$ every sample. That is an exponential decay, and an exponential becomes a **straight line on a dB scale**. Its slope is about $8.7\mu$ dB per sample, so **a bigger μ gives a steeper line** (blue → green → red). The thin dashed black lines are this theory, and they sit right on the simulation.
+3. **Floor, at −26 dB.** Even with perfect weights ($\mathbf{w} = h$) the error is still the measurement noise $v[n]$, which no filter can predict from $x[n]$. So the curve can never go below $\sigma_v^2 = 0.0025$, i.e. −26 dB (solid black line). Reaching that floor means **the filter has learned everything that can be learned**.
+4. **Slightly above the floor, called misadjustment.** In steady state the weights keep wiggling (Graph 1), and each wiggle adds a little error. Theory says the extra fraction is about $\mu \cdot M \cdot P_x / 2$. That is invisible for small $\mu$, but for $\mu = 0.08$ it is 16%, which is why the **red curve settles visibly above the black line**.
+
+**The numbers, measured from the graph and compared with theory:**
+
+| step size $\mu$ | time constant $1/(2\mu)$ | samples until within 3 dB of the floor (measured) | misadjustment (theory) | final error level (measured) |
+|---|---|---|---|---|
+| 0.002 🔵 | 250 samples | ≈ 1320 | 0.4 % | −24.8 dB (still not finished at n = 2000) |
+| 0.01 🟢 | 50 samples | ≈ 290 | 2 % | −25.9 dB |
+| 0.08 🔴 | 6 samples | ≈ 47 | 16 % | −25.1 dB (sits above the floor) |
+
+**The take-away, which is the central design decision for every LMS filter:**
+**μ trades speed for accuracy.** A large $\mu$ learns fast and reacts quickly when the system changes, but it is noisier in steady state. A small $\mu$ is precise but slow. And if $\mu$ goes above about $2/(M \cdot P_x)$ (here 0.5), the curve shoots **up** instead of down: the filter diverges.
 
 ### 7.5 The family at a glance
 
@@ -264,7 +339,7 @@ Least squares will always give you *a* line, even a useless one. **Check the res
 <img src="assets/nonlinear_residuals.png" width="720" alt="Residual diagnosis for non-linear data">
 </div>
 
-**"Linear" means linear in the parameters, not in $x$.** Adding a column $x^2$ to $X$ gives a parabola fit that is *still* ordinary, convex least squares.
+**"Linear" means linear in the parameters, not in x.** Adding a column $x^2$ to $X$ gives a parabola fit that is *still* ordinary, convex least squares.
 
 ### Recommendations
 1. **Plot the data and the residuals** before trusting $R^2$.

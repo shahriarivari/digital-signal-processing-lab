@@ -221,30 +221,39 @@ plt.close(fig)
 print("gd_bowl.gif done")
 
 # ================================================================
-# 4) LMS: the line updating one sample at a time
+# 4) LMS: the line updating one sample at a time (shows before/after + the numbers)
 # ================================================================
 mu, wl, bl = 0.008, -0.5, 7.5
-lms = [(wl, bl, -1)]
+lms = [(wl, bl, -1, 0.0)]                 # (w, b, sample used, error before update)
 order = np.concatenate([rng.permutation(N) for _ in range(400)])
 for n in order:
     e = y[n] - (wl * x[n] + bl)
     wl += mu * e * x[n]; bl += mu * e
-    lms.append((wl, bl, n))
-lms_idx = np.unique(np.concatenate([np.arange(0, 40), np.geomspace(40, len(lms) - 1, 45).astype(int)]))
+    lms.append((wl, bl, n, e))
+lms_idx = np.unique(np.concatenate([np.arange(1, 30), np.geomspace(30, len(lms) - 1, 45).astype(int)]))
 
-fig, ax = plt.subplots(figsize=(5.2, 5.2), dpi=90)
+fig, ax = plt.subplots(figsize=(5.6, 5.6), dpi=85)
 def upd4(k):
     i = lms_idx[min(k, len(lms_idx) - 1)]
-    w, b, n = lms[i]
-    draw_fit(ax, w, b, squares=False, title=f"LMS update n = {i}:  w = {w:.2f}, b = {b:.2f}")
-    ax.plot([-1, 11], [w_ls * -1 + b_ls, w_ls * 11 + b_ls], "--", color=GREEN, lw=1.5)
-    if n >= 0:
-        ax.scatter([x[n]], [y[n]], s=180, facecolors="none", edgecolors=RED, lw=2, zorder=4)
+    w, b, n, e = lms[i]; wp, bp = lms[i - 1][0], lms[i - 1][1]
+    data_space(ax, f"LMS update #{i}")
+    draw_line(ax, w_ls, b_ls, GREEN, lw=1.5, ls="--")
+    draw_line(ax, wp, bp, RED, lw=1.5, ls=":")                   # before the update
+    draw_line(ax, w, b, RED, lw=2.4)                             # after the update
+    ax.scatter([x[n]], [y[n]], s=220, facecolors="none", edgecolors=RED, lw=2, zorder=5)
+    ax.plot([x[n], x[n]], [wp * x[n] + bp, y[n]], color=RED, lw=2.5, zorder=4)   # the error
+    ax.text(-0.6, 12.2, f"sample n: x = {x[n]:.2f}, y = {y[n]:.2f}", fontsize=9)
+    ax.text(-0.6, 11.3, f"error  e = {e:+.2f}", fontsize=9, color=RED, weight="bold")
+    ax.text(-0.6, 10.4, f"Δw = μ·e·x = {mu*e*x[n]:+.3f}    Δb = μ·e = {mu*e:+.3f}", fontsize=9)
+    ax.text(10.8, -1.6, eq(w, b), fontsize=9, color=RED, ha="right", weight="bold")
     fig.tight_layout()
 FuncAnimation(fig, upd4, frames=len(lms_idx) + 10).save("assets/lms_sample_by_sample.gif",
-                                                         writer=PillowWriter(fps=10))
+                                                         writer=PillowWriter(fps=3))
 plt.close(fig)
-print("lms_sample_by_sample.gif done")
+w0, b0, n0, e0 = lms[1]
+print("lms_sample_by_sample.gif done | first update:",
+      dict(x=round(x[n0], 3), y=round(y[n0], 3), e=round(e0, 3), dw=round(mu*e0*x[n0], 4),
+           db=round(mu*e0, 4), w=round(w0, 4), b=round(b0, 4)))
 
 # ================================================================
 # 5) STATIC: non-linear data -> residual plot diagnosis
@@ -299,36 +308,66 @@ plt.tight_layout(); plt.savefig("assets/convexity.png"); plt.close()
 print("convexity.png done")
 
 # ================================================================
-# 7) STATIC: LMS identifying an unknown FIR system
+# 7) STATIC: LMS identifying an unknown FIR system (two annotated figures)
 # ================================================================
 h = np.array([0.8, -0.4, 0.2, 0.1])                       # unknown system
-M, Nn, runs = len(h), 2000, 100
+M, Nn, runs, sig_v = len(h), 2000, 100, 0.05
 
 def lms_run(mu, seed):
     r = np.random.default_rng(seed)
-    xs = r.normal(0, 1, Nn)
-    d = np.convolve(xs, h)[:Nn] + r.normal(0, 0.05, Nn)    # desired = system output + noise
+    xs = r.normal(0, 1, Nn)                                # white input, power Px = 1
+    d = np.convolve(xs, h)[:Nn] + r.normal(0, sig_v, Nn)   # desired = system output + noise
     wv = np.zeros(M); W_h = np.zeros((Nn, M)); E = np.zeros(Nn)
     for n in range(Nn):
         xv = xs[max(0, n - M + 1):n + 1][::-1]
         xv = np.pad(xv, (0, M - len(xv)))                  # [x[n], x[n-1], ..., x[n-M+1]]
-        e = d[n] - wv @ xv                                 # 1) output and error
-        wv = wv + mu * e * xv                              # 2) LMS update
+        e = d[n] - wv @ xv
+        wv = wv + mu * e * xv
         W_h[n] = wv; E[n] = e ** 2
     return W_h, E
 
-fig, axs = plt.subplots(1, 2, figsize=(11, 3.8), dpi=90)
+# --- 7a: the weights ---
+fig, ax = plt.subplots(figsize=(8, 4), dpi=90)
 W_h, _ = lms_run(0.01, 0)
+cols = ["#2563eb", "#f97316", "#16a34a", "#dc2626"]
+ax.axvspan(0, 300, color="#fde68a", alpha=0.35)
+ax.text(150, 1.03, "LEARNING\n(weights move)", ha="center", fontsize=9, weight="bold")
+ax.text(1150, 1.03, "STEADY STATE (weights wiggle around the true values)", ha="center", fontsize=9, weight="bold")
 for k in range(M):
-    axs[0].plot(W_h[:, k], lw=1.6, label=f"w{k} → {h[k]}")
-    axs[0].axhline(h[k], color="k", ls=":", lw=0.8)
-axs[0].set_title("LMS taps learning the unknown system (μ = 0.01)", fontsize=10.5)
-axs[0].set_xlabel("sample n"); axs[0].legend(fontsize=8.5, ncol=2)
+    ax.plot(W_h[:, k], color=cols[k], lw=1.6)
+    ax.axhline(h[k], color=cols[k], ls=":", lw=1)
+    ax.text(2010, W_h[-1, k], f"  w{k} = {W_h[-1, k]:+.3f}   (true h{k} = {h[k]:+.1f})", color=cols[k],
+            va="center", fontsize=9)
+ax.set_xlim(0, 2000); ax.set_ylim(-0.55, 1.15)
+ax.set_xlabel("sample n  (time)"); ax.set_ylabel("weight value")
+ax.set_title("Each line = one filter tap. Dotted = the true (unknown) value it should find.  μ = 0.01", fontsize=10.5)
+plt.tight_layout(); plt.savefig("assets/lms_weights.png", bbox_inches="tight"); plt.close()
+
+# --- 7b: the learning curve ---
+fig, ax = plt.subplots(figsize=(8.5, 4.6), dpi=90)
+J0, Jmin = np.sum(h**2) + sig_v**2, sig_v**2
+_, E1 = lms_run(0.01, 7)
+ax.plot(10*np.log10(E1 + 1e-12), color=GREY, lw=0.5, alpha=0.18, zorder=0, label="a SINGLE run, μ = 0.01 (too noisy to read)")
+stats = {}
 for mu, c in [(0.002, BLUE), (0.01, GREEN), (0.08, RED)]:
     E = np.mean([lms_run(mu, s)[1] for s in range(runs)], axis=0)
-    axs[1].plot(10 * np.log10(E), color=c, lw=1.4, label=f"μ = {mu}")
-axs[1].axhline(10 * np.log10(0.05 ** 2), color="k", ls="--", lw=1, label="noise floor")
-axs[1].set_title("learning curve (mean of e², 100 runs)", fontsize=10.5)
-axs[1].set_xlabel("sample n"); axs[1].set_ylabel("dB"); axs[1].legend(fontsize=9)
-plt.tight_layout(); plt.savefig("assets/lms_system_id.png"); plt.close()
-print("lms_system_id.png done")
+    ax.plot(10*np.log10(E), color=c, lw=1.6, label=f"average of {runs} runs, μ = {mu}")
+    nn = np.arange(Nn)
+    Jth = Jmin * (1 + mu*M/2) + np.sum(h**2) * (1 - mu) ** (2*nn)        # theory
+    ax.plot(10*np.log10(Jth), color="k", lw=0.9, ls="--")
+    stats[mu] = dict(tau=1/(2*mu), final_dB=10*np.log10(E[-400:].mean()),
+                     n_conv=int(np.argmax(10*np.log10(E) < 10*np.log10(Jmin) + 3)))
+ax.axhline(10*np.log10(Jmin), color="k", lw=1.2)
+ax.text(1990, -29.3, "black line = noise floor:  σv² = 0.0025  →  −26 dB  (can never go lower)",
+        ha="right", fontsize=9, bbox=dict(fc="white", ec="none", alpha=0.9))
+ax.annotate("start: filter knows nothing,\nerror = the whole signal (≈ 0 dB)", (5, -0.7), xytext=(200, 1.2),
+            fontsize=9, arrowprops=dict(arrowstyle="->"))
+ax.annotate("straight line in dB\n= exponential convergence", (700, -13), xytext=(980, -11.5),
+            fontsize=9, arrowprops=dict(arrowstyle="->"))
+ax.plot([], [], color="k", ls="--", lw=0.9, label="theory")
+ax.set_ylim(-30, 4); ax.set_xlim(0, 2000)
+ax.set_xlabel("sample n  (time)"); ax.set_ylabel("squared error e²[n]  in dB")
+ax.set_title("Learning curve: how fast the error goes down, for three step sizes μ", fontsize=10.5)
+ax.legend(fontsize=8.5, loc="upper right", framealpha=0.95)
+plt.tight_layout(); plt.savefig("assets/lms_learning_curve.png"); plt.close()
+print("lms figures done", {k: {a: round(b, 2) if isinstance(b, float) else b for a, b in v.items()} for k, v in stats.items()})
